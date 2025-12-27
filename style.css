@@ -24,6 +24,29 @@ body {
   letter-spacing: 0.4px;
 }
 
+.navbar-gradient {
+  background: linear-gradient(120deg, #0d6efd, #4c3ae3);
+}
+
+.brand-mark {
+  width: 36px;
+  height: 36px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  color: #fff;
+}
+
+.hero {
+  background: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.1), transparent 35%), linear-gradient(135deg, #0d6efd, #6f42c1);
+  padding: 3rem 0;
+}
+
+.hero-card {
+  max-width: 320px;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+}
+
 .card {
   border: none;
 }
@@ -34,4 +57,9 @@ body {
 
 .btn:disabled {
   pointer-events: none;
+}
+
+.footer {
+  background: #f8f9fa;
+  border-top: 1px solid #e9ecef;
 }
