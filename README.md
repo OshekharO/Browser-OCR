@@ -47,7 +47,9 @@ Example (multi-worker batching):
 import { createWorker, createScheduler } from 'tesseract.js';
 
 const scheduler = createScheduler();
-const workerCount = navigator.hardwareConcurrency ? Math.min(4, navigator.hardwareConcurrency) : 2;
+const workerCount = navigator.hardwareConcurrency
+  ? Math.min(4, navigator.hardwareConcurrency) // cap to avoid overwhelming the CPU/system
+  : 2;
 
 for (let i = 0; i < workerCount; i++) {
   const worker = await createWorker({ workerPath, corePath, langPath, logger });
@@ -60,6 +62,8 @@ const jobs = files.map((file) => scheduler.addJob('recognize', file, { tessedit_
 const results = await Promise.all(jobs);
 await scheduler.terminate();
 ```
+
+> This sample uses the ESM build of `tesseract.js` (via a bundler or `<script type="module">`). When using the CDN build already present in this project, access the same APIs via `Tesseract.createWorker` and `Tesseract.createScheduler`.
 
 ## Contributing
 
