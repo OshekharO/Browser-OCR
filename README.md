@@ -2,6 +2,10 @@
 
 Simple PHP + Bootstrap front-end that uses Tesseract.js in the browser to extract text from images.
 
+- Supports batching multiple images at once; results are separated in the output box.
+- Additional OCR languages available: English, Spanish, French, German, Italian, Portuguese, Hindi, and Simplified Chinese (more can be added via Tesseract data).
+- OCR formatting is tuned to preserve spacing with a 300 DPI hint for improved fidelity.
+
 ## Getting started
 
 1. Install PHP (any 8.x runtime is fine).

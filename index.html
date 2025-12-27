@@ -24,20 +24,26 @@
               <h1 class="h4 mb-3">Upload an image</h1>
               <p class="text-muted small mb-4">Supported formats: PNG, JPG, JPEG, GIF, BMP, TIFF. Processing happens in your browser—no files are uploaded to the server.</p>
               <div class="mb-3">
-                <label for="imageInput" class="form-label fw-semibold">Choose image</label>
-                <input class="form-control" type="file" id="imageInput" accept="image/*">
+                <label for="imageInput" class="form-label fw-semibold">Choose image(s)</label>
+                <input class="form-control" type="file" id="imageInput" accept="image/*" multiple>
               </div>
               <div class="mb-3">
                 <label for="languageSelect" class="form-label fw-semibold">Language</label>
                 <select class="form-select" id="languageSelect">
                   <option value="eng" selected>English (eng)</option>
                   <option value="spa">Spanish (spa)</option>
+                  <option value="fra">French (fra)</option>
+                  <option value="deu">German (deu)</option>
+                  <option value="ita">Italian (ita)</option>
+                  <option value="por">Portuguese (por)</option>
+                  <option value="hin">Hindi (hin)</option>
+                  <option value="chi_sim">Chinese Simplified (chi_sim)</option>
                 </select>
-                <div class="form-text">Select the OCR language.</div>
+                <div class="form-text">Select the OCR language. Multiple images are supported.</div>
               </div>
               <div id="previewArea" class="border border-dashed rounded p-3 text-center bg-white">
-                <p class="text-muted mb-2" id="placeholderText">No image selected yet.</p>
-                <img id="previewImage" class="img-fluid d-none rounded shadow-sm" alt="Preview">
+                <p class="text-muted mb-2" id="placeholderText">No images selected yet.</p>
+                <div id="previewList" class="d-flex flex-wrap gap-2 justify-content-center"></div>
               </div>
               <div class="d-flex flex-wrap gap-2 mt-4">
                 <button id="extractBtn" class="btn btn-primary" disabled>
@@ -81,7 +87,7 @@
   <script src="assets/tesseract/tesseract.min.js"></script>
   <script>
     const imageInput = document.getElementById('imageInput');
-    const previewImage = document.getElementById('previewImage');
+    const previewList = document.getElementById('previewList');
     const placeholderText = document.getElementById('placeholderText');
     const extractBtn = document.getElementById('extractBtn');
     const clearBtn = document.getElementById('clearBtn');
@@ -95,11 +101,11 @@
     const languageSelect = document.getElementById('languageSelect');
     const workerPath = 'assets/tesseract/worker.min.js';
     const corePath = 'assets/tesseract/tesseract-core.wasm.js';
+    const langPath = 'https://tessdata.projectnaptha.com/4.0.0';
 
     function resetUI() {
       imageInput.value = '';
-      previewImage.src = '';
-      previewImage.classList.add('d-none');
+      previewList.innerHTML = '';
       placeholderText.classList.remove('d-none');
       extractBtn.disabled = true;
       progressWrapper.classList.add('d-none');
@@ -117,61 +123,93 @@
       downloadBtn.disabled = !hasResult;
     }
 
-    function showPreview(file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        previewImage.src = e.target.result;
-        previewImage.classList.remove('d-none');
-        placeholderText.classList.add('d-none');
-      };
-      reader.onerror = () => {
-        statusText.textContent = 'Unable to read the selected file. Please try another image.';
-      };
-      reader.readAsDataURL(file);
+    function showPreviews(files) {
+      previewList.innerHTML = '';
+      if (!files.length) {
+        placeholderText.classList.remove('d-none');
+        return;
+      }
+      placeholderText.classList.add('d-none');
+
+      files.forEach((file) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = document.createElement('img');
+          img.src = e.target.result;
+          img.alt = file.name;
+          img.className = 'img-fluid rounded shadow-sm preview-thumb';
+          previewList.appendChild(img);
+        };
+        reader.onerror = () => {
+          statusText.textContent = 'Unable to read one of the selected files. Please try another image.';
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function updateProgress(currentIndex, totalFiles, message) {
+      if (!message || !message.status) return;
+      if (message.status === 'recognizing text' && typeof message.progress === 'number') {
+        const base = (currentIndex / totalFiles) * 100;
+        const overall = Math.min(100, Math.round(base + (message.progress * (100 / totalFiles))));
+        progressBar.style.width = `${overall}%`;
+        statusText.textContent = `Processing ${currentIndex + 1}/${totalFiles}... ${Math.round(message.progress * 100)}%`;
+      } else {
+        statusText.textContent = `${message.status} (${currentIndex + 1}/${totalFiles})`;
+      }
     }
 
     imageInput.addEventListener('change', (event) => {
-      const file = event.target.files[0];
-      if (!file) {
+      const files = Array.from(event.target.files || []);
+      if (!files.length) {
         resetUI();
         return;
       }
-      showPreview(file);
+      showPreviews(files);
       extractBtn.disabled = false;
       statusText.textContent = '';
     });
 
     extractBtn.addEventListener('click', async () => {
-      const file = imageInput.files[0];
-      if (!file) {
-        statusText.textContent = 'Please select an image first.';
+      const files = Array.from(imageInput.files || []);
+      if (!files.length) {
+        statusText.textContent = 'Please select at least one image first.';
         return;
       }
 
       extractBtn.disabled = true;
       loadingSpinner.classList.remove('d-none');
       progressWrapper.classList.remove('d-none');
+      progressBar.style.width = '0%';
       statusText.textContent = 'Initializing...';
 
       try {
         const language = languageSelect.value || 'eng';
-        const { data: { text } } = await Tesseract.recognize(file, language, {
-          workerPath,
-          corePath,
-          logger: (m) => {
-            if (!m || !m.status) return;
-            if (m.status === 'recognizing text' && m.progress) {
-              const percentage = Math.round(m.progress * 100);
-              progressBar.style.width = `${percentage}%`;
-              statusText.textContent = `Processing... ${percentage}%`;
-            } else {
-              statusText.textContent = m.status;
-            }
-          }
-        });
+        const totalFiles = files.length;
+        let combinedText = '';
 
-        resultText.value = text.trim();
-        statusText.textContent = text.trim() ? 'Done!' : 'No text detected.';
+        for (let i = 0; i < totalFiles; i++) {
+          const file = files[i];
+          const { data: { text } } = await Tesseract.recognize(file, language, {
+            workerPath,
+            corePath,
+            langPath,
+            preserve_interword_spaces: '1',
+            tessedit_pageseg_mode: '3',
+            user_defined_dpi: '300',
+            logger: (m) => updateProgress(i, totalFiles, m)
+          });
+
+          const cleanedText = text.trim();
+          if (cleanedText) {
+            combinedText += combinedText ? `\n\n---\n\n${cleanedText}` : cleanedText;
+          }
+
+          progressBar.style.width = `${Math.round(((i + 1) / totalFiles) * 100)}%`;
+        }
+
+        resultText.value = combinedText;
+        statusText.textContent = combinedText ? 'Done!' : 'No text detected.';
         updateButtonsState();
       } catch (error) {
         console.error(error);
