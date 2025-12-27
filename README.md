@@ -25,7 +25,7 @@ Tesseract.js 7.0.0 is loaded from the CDN (worker/core pulled from the same sour
 - `https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.esm.min.js`
 - `https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/worker.min.js`
 - Core builds (select one based on device support):
-  - `https://cdn.jsdelivr.net/npm/tesseract.js-core@7.0.0/tesseract-core.wasm` (default)
+  - `https://cdn.jsdelivr.net/npm/tesseract.js-core@7.0.0/tesseract-core.wasm.js` (default)
   - `https://cdn.jsdelivr.net/npm/tesseract.js-core@7.0.0/tesseract-core.js`
   - `https://cdn.jsdelivr.net/npm/tesseract.js-core@7.0.0/tesseract-core-simd.js`
   - `https://cdn.jsdelivr.net/npm/tesseract.js-core@7.0.0/tesseract-core-simd.wasm`
