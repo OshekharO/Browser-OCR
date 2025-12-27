@@ -1,0 +1,32 @@
+body {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.border-dashed {
+  border-style: dashed !important;
+}
+
+#previewArea {
+  min-height: 260px;
+}
+
+#previewImage {
+  max-height: 420px;
+  object-fit: contain;
+}
+
+.navbar-brand {
+  letter-spacing: 0.4px;
+}
+
+.card {
+  border: none;
+}
+
+.card-body {
+  padding: 1.5rem;
+}
+
+.btn:disabled {
+  pointer-events: none;
+}
