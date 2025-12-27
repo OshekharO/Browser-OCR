@@ -1,4 +1,4 @@
-# Image Translation (Image to Text OCR)
+# Browser OCR (Image to Text OCR)
 
 Simple Bootstrap front-end that uses Tesseract.js in the browser to extract text from images. You can serve it with PHP's built-in server or any static host.
 
@@ -21,7 +21,9 @@ Simple Bootstrap front-end that uses Tesseract.js in the browser to extract text
 
 Processing stays in your browser—no images are uploaded to the server. The result can be copied or downloaded as a `.txt` file.
 
-Tesseract.js worker/core assets are bundled locally in `assets/tesseract`. Language data is fetched by Tesseract.js as needed (defaults to English).
+Tesseract.js 7.0.0 is loaded from the CDN (worker/core pulled from the same source). Language data is fetched by Tesseract.js as needed (defaults to English). ESM builds are also available at:
+- `https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.esm.min.js`
+- `https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/worker.min.js`
 
 ## Advanced Tesseract.js options
 
