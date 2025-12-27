@@ -1,4 +1,4 @@
-## Contributing to Image Translation
+## Contributing to Browser OCR
 
 Thanks for your interest in improving the project! A few quick notes to keep contributions simple and consistent:
 
