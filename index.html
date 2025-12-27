@@ -21,10 +21,10 @@
         <div class="col-lg-6">
           <div class="card shadow-sm h-100">
             <div class="card-body">
-              <h1 class="h4 mb-3">Upload an image</h1>
+              <h1 class="h4 mb-3">Upload images</h1>
               <p class="text-muted small mb-4">Supported formats: PNG, JPG, JPEG, GIF, BMP, TIFF. Processing happens in your browser—no files are uploaded to the server.</p>
               <div class="mb-3">
-                <label for="imageInput" class="form-label fw-semibold">Choose image(s)</label>
+                <label for="imageInput" class="form-label fw-semibold">Choose images</label>
                 <input class="form-control" type="file" id="imageInput" accept="image/*" multiple>
               </div>
               <div class="mb-3">
@@ -102,6 +102,12 @@
     const workerPath = 'assets/tesseract/worker.min.js';
     const corePath = 'assets/tesseract/tesseract-core.wasm.js';
     const langPath = 'https://tessdata.projectnaptha.com/4.0.0';
+    const resultSeparator = '\n\n---\n\n';
+    const ocrOptions = {
+      preserve_interword_spaces: 1, // keep spacing close to the original layout
+      tessedit_pageseg_mode: 3, // fully automatic page segmentation
+      user_defined_dpi: 300, // hint DPI to improve recognition fidelity
+    };
 
     function resetUI() {
       imageInput.value = '';
@@ -123,6 +129,12 @@
       downloadBtn.disabled = !hasResult;
     }
 
+    function safeFileName(name) {
+      if (!name) return 'image';
+      const cleaned = String(name).replace(/[^a-zA-Z0-9_. -]/g, ' ').replace(/\s+/g, ' ').trim();
+      return cleaned || 'image';
+    }
+
     function showPreviews(files) {
       previewList.innerHTML = '';
       if (!files.length) {
@@ -132,22 +144,24 @@
       placeholderText.classList.add('d-none');
 
       files.forEach((file) => {
+        const safeName = safeFileName(file.name);
         const reader = new FileReader();
         reader.onload = (e) => {
           const img = document.createElement('img');
           img.src = e.target.result;
-          img.alt = file.name;
+          img.alt = safeName;
           img.className = 'img-fluid rounded shadow-sm preview-thumb';
           previewList.appendChild(img);
         };
         reader.onerror = () => {
-          statusText.textContent = 'Unable to read one of the selected files. Please try another image.';
+          statusText.textContent = `Unable to read "${safeName}". Please try a different image.`;
         };
         reader.readAsDataURL(file);
       });
     }
 
     function updateProgress(currentIndex, totalFiles, message) {
+      if (!totalFiles) return;
       if (!message || !message.status) return;
       if (message.status === 'recognizing text' && typeof message.progress === 'number') {
         const base = (currentIndex / totalFiles) * 100;
@@ -194,15 +208,16 @@
             workerPath,
             corePath,
             langPath,
-            preserve_interword_spaces: '1',
-            tessedit_pageseg_mode: '3',
-            user_defined_dpi: '300',
+            ...ocrOptions,
             logger: (m) => updateProgress(i, totalFiles, m)
           });
 
           const cleanedText = text.trim();
           if (cleanedText) {
-            combinedText += combinedText ? `\n\n---\n\n${cleanedText}` : cleanedText;
+            const segment = totalFiles > 1
+              ? `File: ${safeFileName(file.name)}\n${cleanedText}`
+              : cleanedText;
+            combinedText += combinedText ? `${resultSeparator}${segment}` : segment;
           }
 
           progressBar.style.width = `${Math.round(((i + 1) / totalFiles) * 100)}%`;
@@ -213,7 +228,9 @@
         updateButtonsState();
       } catch (error) {
         console.error(error);
-        statusText.textContent = 'There was a problem reading the image. Please try another file.';
+        const rawMessage = error && error.message ? String(error.message).replace(/[\r\n]+/g, ' ').trim() : '';
+        const hint = rawMessage ? `: ${rawMessage}` : '';
+        statusText.textContent = `There was a problem reading the image(s)${hint}. Please ensure the files are supported and try again.`;
       } finally {
         extractBtn.disabled = false;
         loadingSpinner.classList.add('d-none');
