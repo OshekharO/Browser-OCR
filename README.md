@@ -1,6 +1,6 @@
 # Browser OCR (Image to Text OCR)
 
-Simple Bootstrap front-end that uses Tesseract.js in the browser to extract text from images. You can serve it with PHP's built-in server or any static host.
+Simple Bootstrap front-end that uses Tesseract.js in the browser to extract text from images. You can serve it with PHP's built-in server or any static host. A live, canonical deployment is available at [https://browser-ocr.js.org](https://browser-ocr.js.org), running fully client-side for privacy.
 
 - Supports batching multiple images at once; results are separated in the output box.
 - Additional OCR languages available: English, Spanish, French, German, Italian, Portuguese, Hindi, and Simplified Chinese (more can be added via Tesseract data).
