@@ -11,43 +11,33 @@
       body {
         background: #f8fafc;
         color: #0f172a;
-        font-family:
-          system-ui,
-          -apple-system,
-          Segoe UI,
-          sans-serif;
+        font-family: system-ui, -apple-system, Segoe UI, sans-serif;
       }
-
       .app-header {
         background: linear-gradient(135deg, #4f46e5, #6366f1);
         color: #fff;
         padding: 2.5rem 1rem;
       }
-
       .card {
         border: 1px solid #e5e7eb;
         border-radius: 14px;
         box-shadow: 0 10px 25px rgba(0, 0, 0, 0.04);
       }
-
       .upload-box {
         background: #f1f5f9;
         border: 2px dashed #e5e7eb;
         border-radius: 12px;
         padding: 1.5rem;
       }
-
       .preview-thumb {
         max-height: 120px;
         max-width: 180px;
         object-fit: contain;
       }
-
       textarea {
         resize: none;
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       }
-
       footer {
         border-top: 1px solid #e5e7eb;
         color: #64748b;
@@ -72,8 +62,8 @@
             <div class="card-body">
               <h5 class="mb-3">1. Upload & Configure</h5>
 
-              <label class="fw-semibold">Images</label>
-              <input id="imageInput" type="file" class="form-control" accept="image/*" multiple />
+              <label class="fw-semibold">Images or PDFs</label>
+              <input id="fileInput" type="file" class="form-control" accept="image/*,.pdf" multiple />
 
               <label class="fw-semibold mt-3">OCR Language</label>
               <select id="languageSelect" class="form-select">
@@ -94,7 +84,7 @@
               </select>
 
               <div class="upload-box mt-4 text-center">
-                <p class="text-muted mb-2">Image preview</p>
+                <p class="text-muted mb-2">File preview</p>
                 <div id="previewList" class="d-flex flex-wrap gap-2 justify-content-center"></div>
               </div>
 
@@ -118,7 +108,13 @@
                 <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated"></div>
               </div>
 
-              <div id="statusText" class="small mt-2" role="status" aria-live="polite" aria-atomic="true"></div>
+              <div
+                id="statusText"
+                class="small mt-2"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+              ></div>
             </div>
           </div>
         </div>
@@ -157,15 +153,23 @@
       </div>
     </footer>
 
+    <!-- PDF.js (STABLE UMD) -->
+    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+    <script>
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+    </script>
+
+    <!-- Tesseract -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"></script>
 
     <script>
-      /* ---------- STATE ---------- */
+      /* ===================== STATE ===================== */
       let cancelRequested = false;
       let previewURLs = [];
 
-      /* ---------- DOM ---------- */
-      const imageInput = document.getElementById("imageInput");
+      /* ===================== DOM ===================== */
+      const fileInput = document.getElementById("fileInput");
       const previewList = document.getElementById("previewList");
       const extractBtn = document.getElementById("extractBtn");
       const cancelBtn = document.getElementById("cancelBtn");
@@ -174,16 +178,11 @@
       const resultText = document.getElementById("resultText");
       const progressBar = document.getElementById("progressBar");
       const progressWrap = progressBar.parentElement;
-
       const languageSel = document.getElementById("languageSelect");
       const presetSel = document.getElementById("presetSelect");
       const downscaleToggle = document.getElementById("downscaleToggle");
       const copyBtn = document.getElementById("copyBtn");
       const downloadBtn = document.getElementById("downloadBtn");
-
-      const workerPath = "https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/worker.min.js";
-      const corePath = "https://cdn.jsdelivr.net/npm/tesseract.js-core@7.0.0/tesseract-core.wasm.js";
-      const langPath = "https://tessdata.projectnaptha.com/4.0.0";
 
       const PRESET_STATUS = {
         scan: "Deskewing → Enhancing contrast → Recognizing text",
@@ -192,7 +191,7 @@
         photo: "Normalizing photo → Recognizing",
       };
 
-      /* ---------- IMAGE DOWNSCALE ---------- */
+      /* ===================== HELPERS ===================== */
       async function downscaleImage(file, maxWidth = 1600) {
         const img = new Image();
         img.src = URL.createObjectURL(file);
@@ -213,27 +212,54 @@
         return new Promise((res) => canvas.toBlob((b) => res(b), "image/jpeg", 0.9));
       }
 
-      /* ---------- PREVIEW + MEMORY CLEANUP ---------- */
-      imageInput.onchange = (e) => {
+      async function extractTextFromPdf(pdf) {
+        let text = "";
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          text += content.items.map((it) => it.str).join(" ") + "\n";
+        }
+        return text.trim();
+      }
+
+      async function renderPdfPageToImage(pdf, pageNum) {
+        const page = await pdf.getPage(pageNum);
+        const viewport = page.getViewport({ scale: 2 });
+        const canvas = document.createElement("canvas");
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+        return new Promise((res) => canvas.toBlob((b) => res(b), "image/png"));
+      }
+
+      /* ===================== PREVIEW ===================== */
+      fileInput.onchange = (e) => {
         previewURLs.forEach(URL.revokeObjectURL);
         previewURLs = [];
         previewList.innerHTML = "";
 
         [...e.target.files].forEach((f) => {
-          const url = URL.createObjectURL(f);
-          previewURLs.push(url);
-          const img = document.createElement("img");
-          img.src = url;
-          img.className = "preview-thumb rounded";
-          previewList.appendChild(img);
+          if (f.type.startsWith("image/")) {
+            const url = URL.createObjectURL(f);
+            previewURLs.push(url);
+            const img = document.createElement("img");
+            img.src = url;
+            img.className = "preview-thumb rounded";
+            previewList.appendChild(img);
+          } else {
+            const badge = document.createElement("div");
+            badge.className = "badge bg-secondary";
+            badge.textContent = "PDF";
+            previewList.appendChild(badge);
+          }
         });
 
         extractBtn.disabled = false;
       };
 
-      /* ---------- OCR ---------- */
+      /* ===================== OCR ===================== */
       extractBtn.onclick = async () => {
-        const files = [...imageInput.files];
+        const files = [...fileInput.files];
         if (!files.length) return;
 
         cancelRequested = false;
@@ -243,40 +269,84 @@
         progressWrap.classList.remove("d-none");
         progressBar.style.width = "0%";
         statusText.setAttribute("aria-busy", "true");
+        statusText.textContent = "Preparing OCR…";
 
+        let totalSteps = 0;
+        for (const f of files) {
+          if (f.type === "application/pdf") {
+            const pdf = await pdfjsLib.getDocument(await f.arrayBuffer()).promise;
+            totalSteps += pdf.numPages;
+          } else {
+            totalSteps++;
+          }
+        }
+
+        let completed = 0;
         const startTime = Date.now();
         let output = "";
-        const total = files.length;
 
-        for (let i = 0; i < total; i++) {
+        for (const file of files) {
           if (cancelRequested) break;
 
-          const file = files[i];
-          statusText.textContent = `${PRESET_STATUS[presetSel.value]} · Image ${i + 1}/${total}`;
+          if (file.type === "application/pdf") {
+            statusText.textContent = "Analyzing PDF…";
+            const pdf = await pdfjsLib.getDocument(await file.arrayBuffer()).promise;
+            const text = await extractTextFromPdf(pdf);
+
+            if (text.length > 50) {
+              output += text + "\n\n";
+              completed += pdf.numPages;
+              progressBar.style.width = `${(completed / totalSteps) * 100}%`;
+              continue;
+            }
+
+            for (let p = 1; p <= pdf.numPages; p++) {
+              if (cancelRequested) break;
+
+              const elapsed = (Date.now() - startTime) / 1000;
+              const overall = (completed / totalSteps) * 100;
+              const remaining = elapsed * ((100 - overall) / Math.max(overall, 1));
+
+              statusText.textContent =
+                `${PRESET_STATUS[presetSel.value]} · PDF page ${p}/${pdf.numPages} · ~${Math.ceil(remaining)}s left`;
+
+              const img = await renderPdfPageToImage(pdf, p);
+              const res = await Tesseract.recognize(img, languageSel.value, {
+                logger: (m) => {
+                  if (m.progress != null) {
+                    const prog = ((completed + m.progress) / totalSteps) * 100;
+                    progressBar.style.width = `${Math.round(prog)}%`;
+                  }
+                },
+              });
+
+              output += res.data.text.trim() + "\n\n";
+              completed++;
+            }
+            continue;
+          }
 
           let input = downscaleToggle.checked ? await downscaleImage(file) : file;
 
-          const result = await Tesseract.recognize(input, languageSel.value, {
-            workerPath,
-            corePath,
-            langPath,
+          const elapsed = (Date.now() - startTime) / 1000;
+          const overall = (completed / totalSteps) * 100;
+          const remaining = elapsed * ((100 - overall) / Math.max(overall, 1));
+          statusText.textContent =
+            `${PRESET_STATUS[presetSel.value]} · ~${Math.ceil(remaining)}s left`;
+
+          const res = await Tesseract.recognize(input, languageSel.value, {
             logger: (m) => {
               if (m.progress != null) {
-                const overall = ((i + m.progress) / total) * 100;
-                progressBar.style.width = `${Math.round(overall)}%`;
-
-                const elapsed = (Date.now() - startTime) / 1000;
-                const remaining = elapsed * ((100 - overall) / Math.max(overall, 1));
-                statusText.textContent = `${PRESET_STATUS[presetSel.value]} · Image ${i + 1}/${total} · ~${Math.ceil(remaining)}s left`;
+                const prog = ((completed + m.progress) / totalSteps) * 100;
+                progressBar.style.width = `${Math.round(prog)}%`;
               }
             },
           });
 
-          const text = result.data.text.trim();
-          if (text) output += (output ? "\n\n---\n\n" : "") + text;
+          output += res.data.text.trim() + "\n\n";
+          completed++;
         }
 
-        // Cleanup
         previewURLs.forEach(URL.revokeObjectURL);
         previewURLs = [];
         previewList.innerHTML = "";
@@ -291,27 +361,15 @@
           statusText.textContent = "OCR cancelled.";
         } else {
           resultText.value = output || "No text detected.";
+          statusText.textContent = "OCR completed successfully.";
           copyBtn.disabled = !output;
           downloadBtn.disabled = !output;
-          statusText.textContent = "OCR completed successfully.";
         }
       };
 
-      /* ---------- CANCEL ---------- */
-      cancelBtn.onclick = () => {
-        cancelRequested = true;
-      };
+      /* ===================== ACTIONS ===================== */
+      cancelBtn.onclick = () => (cancelRequested = true);
 
-      /* ---------- SHORTCUTS ---------- */
-      document.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && !extractBtn.disabled) extractBtn.click();
-        if (e.key === "Escape") cancelBtn.click();
-        if ((e.ctrlKey || e.metaKey) && e.key === "c") {
-          navigator.clipboard.writeText(resultText.value);
-        }
-      });
-
-      /* ---------- ACTIONS ---------- */
       copyBtn.onclick = async () => {
         await navigator.clipboard.writeText(resultText.value);
         statusText.textContent = "Copied!";
@@ -324,6 +382,15 @@
         a.download = "ocr.txt";
         a.click();
       };
+
+      /* ===================== SHORTCUTS ===================== */
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !extractBtn.disabled) extractBtn.click();
+        if (e.key === "Escape") cancelBtn.click();
+        if ((e.ctrlKey || e.metaKey) && e.key === "c") {
+          navigator.clipboard.writeText(resultText.value);
+        }
+      });
     </script>
   </body>
 </html>
