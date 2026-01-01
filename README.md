@@ -1,77 +1,173 @@
-# Browser OCR (Image to Text OCR)
+# 📄 Browser OCR — Private, Client-Side Text Extraction
 
-Simple Bootstrap front-end that uses Tesseract.js in the browser to extract text from images. You can serve it with PHP's built-in server or any static host.
+A fast, privacy-first OCR web application that extracts text from images **entirely in the browser** using **Tesseract.js**.
+No uploads. No tracking. No servers.
 
-- Supports batching multiple images at once; results are separated in the output box.
-- Additional OCR languages available: English, Spanish, French, German, Italian, Portuguese, Hindi, and Simplified Chinese (more can be added via Tesseract data).
-- OCR formatting is tuned to preserve spacing with a 300 DPI hint for improved fidelity.
-- Client-side only: images never leave the browser.
+Designed with **performance, accessibility, and real-world UX** in mind.
 
-## Getting started
+---
 
-1. Install PHP (any 8.x runtime is fine).
-2. From the project root, start a local server:
+## ✨ Features
 
-   ```bash
-   php -S localhost:8000
-   ```
+* 🖼 **Multi-image OCR** (batch processing)
+* 🌍 **Multiple languages** (English, Hindi, French, Spanish, German, Chinese)
+* 🧩 **OCR presets** for different image types
 
-3. Open [http://localhost:8000](http://localhost:8000) in your browser.
-4. Choose an image (PNG, JPG, JPEG, GIF, BMP, TIFF) and click **Extract Text** to run OCR fully on the client.
+  * Scanned documents
+  * Screenshots / UI
+  * Notes / handwriting
+  * Camera photos
+* ⚡ **Smart image downscaling** (optional, improves speed & memory usage)
+* 📊 **Real progress bar** with percentage
+* ⏱ **ETA (estimated time remaining)**
+* ⏹ **Cancel OCR at any time**
+* ♿ **Accessible** (ARIA live status, keyboard shortcuts)
+* 🧹 **Memory-safe** (object URL cleanup, mobile-friendly)
+* 📋 **Copy & download extracted text**
 
-Processing stays in your browser—no images are uploaded to the server. The result can be copied or downloaded as a `.txt` file.
+---
 
-Tesseract.js 7.0.0 is loaded from the CDN (worker/core pulled from the same source). Language data is fetched by Tesseract.js as needed (defaults to English). ESM builds are also available at:
-- `https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.esm.min.js`
-- `https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/worker.min.js`
-- Core builds (select one based on device support):
-  - `https://cdn.jsdelivr.net/npm/tesseract.js-core@7.0.0/tesseract-core.wasm.js` (default)
-  - `https://cdn.jsdelivr.net/npm/tesseract.js-core@7.0.0/tesseract-core.js`
-  - `https://cdn.jsdelivr.net/npm/tesseract.js-core@7.0.0/tesseract-core-simd.js`
-  - `https://cdn.jsdelivr.net/npm/tesseract.js-core@7.0.0/tesseract-core-simd.wasm`
+## 🔒 Privacy by Design
 
-## Advanced Tesseract.js options
+* All OCR runs **locally in your browser**
+* Images are **never uploaded**
+* No analytics, no cookies, no tracking
 
-The app sets a few defaults for accuracy:
+This makes it suitable for **sensitive documents**.
 
-- `preserve_interword_spaces: 1` keeps layout spacing.
-- `tessedit_pageseg_mode: 3` uses automatic page segmentation.
-- `user_defined_dpi: 300` hints a higher DPI for cleaner text.
+---
 
-Other useful options you can enable for specific scenarios:
+## 🧠 OCR Presets (Why They Matter)
 
-- `oem`: choose the OCR engine mode (e.g., `1` for LSTM only).
-- `tessedit_char_whitelist` / `tessedit_char_blacklist`: restrict or exclude characters for cleaner results.
-- `tessedit_pageseg_mode`: switch PSM (e.g., `6` for uniform block of text, `13` for raw line).
-- `dpi` or `user_defined_dpi`: increase for low-resolution scans.
-- `workerPath`, `corePath`, `langPath`: point to self-hosted assets for offline use.
-- `cachePath`: reuse language data between runs.
-- `numWorkers` with the Tesseract.js `createScheduler` API: process multiple images in parallel when batching is large.
+Presets adjust preprocessing and expectations for different image types:
 
-Example (multi-worker batching):
+| Preset                 | Best For                       |
+| ---------------------- | ------------------------------ |
+| 📄 Scanned Document    | PDFs, printed pages            |
+| 🖥 Screenshot / UI     | Apps, tables, code             |
+| 📝 Notes / Handwriting | Class notes, rough writing     |
+| 📸 Camera Photo        | Mobile photos, uneven lighting |
 
-```js
-import { createWorker, createScheduler } from 'tesseract.js';
+Presets also power **status messaging**, so users understand what’s happening.
 
-const scheduler = createScheduler();
-const workerCount = navigator.hardwareConcurrency
-  ? Math.min(4, navigator.hardwareConcurrency) // cap to avoid overwhelming the CPU/system
-  : 2;
+---
 
-for (let i = 0; i < workerCount; i++) {
-  const worker = await createWorker({ workerPath, corePath, langPath, logger });
-  await worker.loadLanguage('eng');
-  await worker.initialize('eng');
-  scheduler.addWorker(worker);
-}
+## ⚡ Smart Image Downscaling
 
-const jobs = files.map((file) => scheduler.addJob('recognize', file, { tessedit_pageseg_mode: 6 }));
-const results = await Promise.all(jobs);
-await scheduler.terminate();
+Large images (e.g. phone photos) are automatically resized before OCR.
+
+* Improves speed (often 2–4× faster)
+* Reduces memory usage
+* Prevents mobile browser crashes
+* Can be turned **ON/OFF** in Advanced settings
+
+---
+
+## ♿ Accessibility & UX
+
+* `aria-live` status updates for screen readers
+* Keyboard shortcuts:
+
+  * **Enter** → Start OCR
+  * **Esc** → Cancel OCR
+  * **Ctrl / Cmd + C** → Copy result
+* Clear progress + ETA to reduce perceived waiting time
+
+---
+
+## 🧹 Performance & Memory Safety
+
+* Object URLs are revoked after use
+* Image previews cleaned up after OCR
+* No persistent workers or leaked references
+* Safe for mobile and low-memory devices
+
+---
+
+## 🛠 Tech Stack
+
+* **HTML5**
+* **CSS3**
+* **Bootstrap 5**
+* **Vanilla JavaScript**
+* **Tesseract.js (WebAssembly OCR)**
+
+No frameworks. No build step. No backend.
+
+---
+
+## 🚀 Getting Started
+
+### 1️⃣ Clone or download
+
+```bash
+git clone https://github.com/OshekharO/Browser-OCR.git
 ```
 
-> This sample uses the ESM build of `tesseract.js` (via a bundler or `<script type="module">`). When using the CDN build already present in this project, access the same APIs via `Tesseract.createWorker` and `Tesseract.createScheduler`.
+### 2️⃣ Open in browser
 
-## Contributing
+Just open `index.html` in any modern browser
+(Chrome, Edge, Firefox, Safari)
 
-Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidance on running the project locally and submitting improvements.
+That’s it.
+
+---
+
+## 📦 Deployment
+
+This app can be hosted as **static files**:
+
+* GitHub Pages
+* Netlify
+* Vercel
+* Any static hosting
+
+No server configuration required.
+
+---
+
+## ⚠️ Limitations
+
+* OCR accuracy depends on image quality
+* Handwritten text may be inconsistent
+* Very large batches can be slow on low-end devices
+
+These are limitations of **client-side OCR**, not the app itself.
+
+---
+
+## 🧪 Tested On
+
+* Chrome (Desktop & Android)
+* Edge
+* Firefox
+* Mobile Chrome (Android)
+
+---
+
+## 📄 License
+
+MIT License
+Free to use, modify, and distribute.
+
+---
+
+## 🧠 Design Philosophy
+
+> “Do the simplest thing that works — and make it robust.”
+
+This project prioritizes:
+
+* Stability over cleverness
+* User trust over features
+* Privacy over convenience
+* Predictable UX over magic
+
+---
+
+## ⭐ If You Use This
+
+If this project helped you:
+
+* ⭐ Star the repo
+* 🧑‍💻 Fork and improve it
