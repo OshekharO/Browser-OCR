@@ -284,67 +284,75 @@
         let completed = 0;
         const startTime = Date.now();
         let output = "";
+        let worker = null;
 
-        for (const file of files) {
-          if (cancelRequested) break;
+        try {
+          for (const file of files) {
+            if (cancelRequested) break;
 
-          if (file.type === "application/pdf") {
-            statusText.textContent = "Analyzing PDF…";
-            const pdf = await pdfjsLib.getDocument(await file.arrayBuffer()).promise;
-            const text = await extractTextFromPdf(pdf);
+            if (file.type === "application/pdf") {
+              statusText.textContent = "Analyzing PDF…";
+              const pdf = await pdfjsLib.getDocument(await file.arrayBuffer()).promise;
+              const text = await extractTextFromPdf(pdf);
 
-            if (text.length > 50) {
-              output += text + "\n\n";
-              completed += pdf.numPages;
-              progressBar.style.width = `${(completed / totalSteps) * 100}%`;
+              if (text.length > 50) {
+                output += text + "\n\n";
+                completed += pdf.numPages;
+                progressBar.style.width = `${(completed / totalSteps) * 100}%`;
+                continue;
+              }
+
+              for (let p = 1; p <= pdf.numPages; p++) {
+                if (cancelRequested) break;
+
+                // Lazy initialize single reusable worker instance to avoid expensive WASM re-creation per image
+                // Optimization: Reusing worker avoids ~1-2s WebWorker & WASM initialization overhead per page/image
+                if (!worker) {
+                  worker = await Tesseract.createWorker(languageSel.value);
+                }
+
+                const elapsed = (Date.now() - startTime) / 1000;
+                const overall = (completed / totalSteps) * 100;
+                const remaining = elapsed * ((100 - overall) / Math.max(overall, 1));
+
+                statusText.textContent =
+                  `${PRESET_STATUS[presetSel.value]} · PDF page ${p}/${pdf.numPages} · ~${Math.ceil(remaining)}s left`;
+
+                const img = await renderPdfPageToImage(pdf, p);
+                const res = await worker.recognize(img);
+
+                output += res.data.text.trim() + "\n\n";
+                completed++;
+                progressBar.style.width = `${Math.round((completed / totalSteps) * 100)}%`;
+              }
               continue;
             }
 
-            for (let p = 1; p <= pdf.numPages; p++) {
-              if (cancelRequested) break;
+            let input = downscaleToggle.checked ? await downscaleImage(file) : file;
 
-              const elapsed = (Date.now() - startTime) / 1000;
-              const overall = (completed / totalSteps) * 100;
-              const remaining = elapsed * ((100 - overall) / Math.max(overall, 1));
-
-              statusText.textContent =
-                `${PRESET_STATUS[presetSel.value]} · PDF page ${p}/${pdf.numPages} · ~${Math.ceil(remaining)}s left`;
-
-              const img = await renderPdfPageToImage(pdf, p);
-              const res = await Tesseract.recognize(img, languageSel.value, {
-                logger: (m) => {
-                  if (m.progress != null) {
-                    const prog = ((completed + m.progress) / totalSteps) * 100;
-                    progressBar.style.width = `${Math.round(prog)}%`;
-                  }
-                },
-              });
-
-              output += res.data.text.trim() + "\n\n";
-              completed++;
+            // Lazy initialize single reusable worker instance to avoid expensive WASM re-creation per image
+            // Optimization: Reusing worker avoids ~1-2s WebWorker & WASM initialization overhead per page/image
+            if (!worker) {
+              worker = await Tesseract.createWorker(languageSel.value);
             }
-            continue;
+
+            const elapsed = (Date.now() - startTime) / 1000;
+            const overall = (completed / totalSteps) * 100;
+            const remaining = elapsed * ((100 - overall) / Math.max(overall, 1));
+            statusText.textContent =
+              `${PRESET_STATUS[presetSel.value]} · ~${Math.ceil(remaining)}s left`;
+
+            const res = await worker.recognize(input);
+
+            output += res.data.text.trim() + "\n\n";
+            completed++;
+            progressBar.style.width = `${Math.round((completed / totalSteps) * 100)}%`;
           }
-
-          let input = downscaleToggle.checked ? await downscaleImage(file) : file;
-
-          const elapsed = (Date.now() - startTime) / 1000;
-          const overall = (completed / totalSteps) * 100;
-          const remaining = elapsed * ((100 - overall) / Math.max(overall, 1));
-          statusText.textContent =
-            `${PRESET_STATUS[presetSel.value]} · ~${Math.ceil(remaining)}s left`;
-
-          const res = await Tesseract.recognize(input, languageSel.value, {
-            logger: (m) => {
-              if (m.progress != null) {
-                const prog = ((completed + m.progress) / totalSteps) * 100;
-                progressBar.style.width = `${Math.round(prog)}%`;
-              }
-            },
-          });
-
-          output += res.data.text.trim() + "\n\n";
-          completed++;
+        } finally {
+          // Ensure worker is terminated to free memory and WebWorker resources
+          if (worker) {
+            await worker.terminate();
+          }
         }
 
         previewURLs.forEach(URL.revokeObjectURL);
