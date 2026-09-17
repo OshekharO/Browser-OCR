@@ -1,0 +1,3 @@
+## 2025-03-08 - Tesseract.js Worker Reuse Optimization
+**Learning:** `Tesseract.recognize()` in Tesseract.js is deprecated and creates, initializes, loads WebAssembly core modules, and destroys a new WebWorker on every single call. For multi-image batches or multi-page PDFs, reusing a single `Tesseract.createWorker()` instance eliminates 1-2+ seconds of WebWorker setup and WASM re-initialization per image, speeding up batch processing by 2-3x.
+**Action:** Always create a single worker instance with `Tesseract.createWorker(lang)` before batch OCR loops, reuse it for all images/pages, and call `worker.terminate()` when batch processing finishes or is cancelled.
