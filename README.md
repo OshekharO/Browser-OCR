@@ -9,7 +9,8 @@ Designed with **performance, accessibility, and real-world UX** in mind.
 
 ## ✨ Features
 
-* 🖼 **Multi-image OCR** (batch processing)
+* 🖼 **Multi-image & PDF OCR** (batch processing)
+* 📥 **Drag-and-Drop file uploads** & file reset button
 * 🌍 **Multiple languages** (English, Hindi, French, Spanish, German, Chinese)
 * 🧩 **OCR presets** for different image types
 
@@ -18,9 +19,11 @@ Designed with **performance, accessibility, and real-world UX** in mind.
   * Notes / handwriting
   * Camera photos
 * ⚡ **Smart image downscaling** (optional, improves speed & memory usage)
-* 📊 **Real progress bar** with percentage
-* ⏱ **ETA (estimated time remaining)**
+* 📊 **Real progress bar** with percentage & **ETA**
 * ⏹ **Cancel OCR at any time**
+* 📊 **Live Word & Character counters** for extracted output
+* 🧹 **Clean Text utility** to normalize whitespace and extra line breaks
+* 🛡 **Fault-tolerant batch processing** with isolated error recovery
 * ♿ **Accessible** (ARIA live status, keyboard shortcuts)
 * 🧹 **Memory-safe** (object URL cleanup, mobile-friendly)
 * 📋 **Copy & download extracted text**
