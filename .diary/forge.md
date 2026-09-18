@@ -1,0 +1,3 @@
+## 2026-09-17 - Client-side Drag & Drop and Error Recovery in Web OCR
+**Learning:** Assigning `e.dataTransfer.files` directly to a file input element (`fileInput.files = e.dataTransfer.files`) allows seamless integration between custom HTML drag-and-drop dropzones and HTML5 file input change listeners. Additionally, wrapping per-file recognition in `try...catch...finally` blocks within batch loops prevents corrupted or unreadable images from interrupting the execution of remaining valid files in multi-image/PDF OCR jobs.
+**Action:** Always wrap individual file or page operations in isolated try-catch blocks during batch processing, and synchronize drag-and-drop transfers directly with the underlying file input DOM element.

@@ -25,9 +25,15 @@
       }
       .upload-box {
         background: #f1f5f9;
-        border: 2px dashed #e5e7eb;
+        border: 2px dashed #cbd5e1;
         border-radius: 12px;
         padding: 1.5rem;
+        transition: background-color 0.2s, border-color 0.2s;
+        cursor: pointer;
+      }
+      .upload-box.drag-over {
+        background: #e0e7ff;
+        border-color: #6366f1;
       }
       .preview-thumb {
         max-height: 120px;
@@ -83,8 +89,8 @@
                 <option value="photo">📸 Camera photo</option>
               </select>
 
-              <div class="upload-box mt-4 text-center">
-                <p class="text-muted mb-2">File preview</p>
+              <div id="uploadBox" class="upload-box mt-4 text-center">
+                <p class="text-muted mb-2">Drag & drop files here or click to select</p>
                 <div id="previewList" class="d-flex flex-wrap gap-2 justify-content-center"></div>
               </div>
 
@@ -97,10 +103,11 @@
               </details>
 
               <div class="d-flex gap-2 mt-4">
-                <button id="extractBtn" class="btn btn-primary w-100" disabled>
+                <button id="extractBtn" class="btn btn-primary flex-grow-1" disabled>
                   <span id="spinner" class="spinner-border spinner-border-sm d-none me-2"></span>
                   Extract Text
                 </button>
+                <button id="clearBtn" class="btn btn-outline-secondary d-none">Clear</button>
                 <button id="cancelBtn" class="btn btn-outline-danger d-none">Cancel</button>
               </div>
 
@@ -127,14 +134,19 @@
 
               <textarea
                 id="resultText"
-                class="form-control flex-grow-1 mb-3"
+                class="form-control flex-grow-1 mb-2"
                 rows="10"
                 placeholder="OCR result will appear here…"
-                readonly
               ></textarea>
+
+              <div class="d-flex justify-content-between text-muted small mb-3 px-1">
+                <span>Words: <strong id="wordCount">0</strong></span>
+                <span>Characters: <strong id="charCount">0</strong></span>
+              </div>
 
               <div class="d-flex gap-2">
                 <button id="copyBtn" class="btn btn-outline-primary" disabled>Copy</button>
+                <button id="cleanBtn" class="btn btn-outline-secondary" disabled>Clean Text</button>
                 <button id="downloadBtn" class="btn btn-outline-success" disabled>Download</button>
               </div>
             </div>
@@ -170,8 +182,10 @@
 
       /* ===================== DOM ===================== */
       const fileInput = document.getElementById("fileInput");
+      const uploadBox = document.getElementById("uploadBox");
       const previewList = document.getElementById("previewList");
       const extractBtn = document.getElementById("extractBtn");
+      const clearBtn = document.getElementById("clearBtn");
       const cancelBtn = document.getElementById("cancelBtn");
       const spinner = document.getElementById("spinner");
       const statusText = document.getElementById("statusText");
@@ -182,7 +196,10 @@
       const presetSel = document.getElementById("presetSelect");
       const downscaleToggle = document.getElementById("downscaleToggle");
       const copyBtn = document.getElementById("copyBtn");
+      const cleanBtn = document.getElementById("cleanBtn");
       const downloadBtn = document.getElementById("downloadBtn");
+      const wordCount = document.getElementById("wordCount");
+      const charCount = document.getElementById("charCount");
 
       const PRESET_STATUS = {
         scan: "Deskewing → Enhancing contrast → Recognizing text",
@@ -232,13 +249,19 @@
         return new Promise((res) => canvas.toBlob((b) => res(b), "image/png"));
       }
 
-      /* ===================== PREVIEW ===================== */
-      fileInput.onchange = (e) => {
+      /* ===================== PREVIEW & DRAG-DROP ===================== */
+      function renderPreviews(files) {
         previewURLs.forEach(URL.revokeObjectURL);
         previewURLs = [];
         previewList.innerHTML = "";
 
-        [...e.target.files].forEach((f) => {
+        if (!files || !files.length) {
+          extractBtn.disabled = true;
+          clearBtn.classList.add("d-none");
+          return;
+        }
+
+        [...files].forEach((f) => {
           if (f.type.startsWith("image/")) {
             const url = URL.createObjectURL(f);
             previewURLs.push(url);
@@ -248,13 +271,49 @@
             previewList.appendChild(img);
           } else {
             const badge = document.createElement("div");
-            badge.className = "badge bg-secondary";
-            badge.textContent = "PDF";
+            badge.className = "badge bg-secondary align-self-center p-2";
+            badge.textContent = `PDF: ${f.name}`;
             previewList.appendChild(badge);
           }
         });
 
         extractBtn.disabled = false;
+        clearBtn.classList.remove("d-none");
+      }
+
+      fileInput.onchange = (e) => {
+        renderPreviews(e.target.files);
+      };
+
+      uploadBox.onclick = (e) => {
+        if (e.target.tagName !== "INPUT") {
+          fileInput.click();
+        }
+      };
+
+      uploadBox.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        uploadBox.classList.add("drag-over");
+      });
+
+      uploadBox.addEventListener("dragleave", (e) => {
+        e.preventDefault();
+        uploadBox.classList.remove("drag-over");
+      });
+
+      uploadBox.addEventListener("drop", (e) => {
+        e.preventDefault();
+        uploadBox.classList.remove("drag-over");
+        if (e.dataTransfer.files && e.dataTransfer.files.length) {
+          fileInput.files = e.dataTransfer.files;
+          renderPreviews(fileInput.files);
+        }
+      });
+
+      clearBtn.onclick = () => {
+        fileInput.value = "";
+        renderPreviews([]);
+        statusText.textContent = "Cleared files.";
       };
 
       /* ===================== OCR ===================== */
@@ -305,48 +364,58 @@
               for (let p = 1; p <= pdf.numPages; p++) {
                 if (cancelRequested) break;
 
-                // Lazy initialize single reusable worker instance to avoid expensive WASM re-creation per image
-                // Optimization: Reusing worker avoids ~1-2s WebWorker & WASM initialization overhead per page/image
-                if (!worker) {
-                  worker = await Tesseract.createWorker(languageSel.value);
+                try {
+                  // Lazy initialize single reusable worker instance to avoid expensive WASM re-creation per image
+                  // Optimization: Reusing worker avoids ~1-2s WebWorker & WASM initialization overhead per page/image
+                  if (!worker) {
+                    worker = await Tesseract.createWorker(languageSel.value);
+                  }
+
+                  const elapsed = (Date.now() - startTime) / 1000;
+                  const overall = (completed / totalSteps) * 100;
+                  const remaining = elapsed * ((100 - overall) / Math.max(overall, 1));
+
+                  statusText.textContent =
+                    `${PRESET_STATUS[presetSel.value]} · PDF page ${p}/${pdf.numPages} · ~${Math.ceil(remaining)}s left`;
+
+                  const img = await renderPdfPageToImage(pdf, p);
+                  const res = await worker.recognize(img);
+                  output += res.data.text.trim() + "\n\n";
+                } catch (err) {
+                  console.error(`Error processing PDF page ${p}:`, err);
+                  output += `[Error processing PDF page ${p}: ${err.message || err}]\n\n`;
+                } finally {
+                  completed++;
+                  progressBar.style.width = `${Math.round((completed / totalSteps) * 100)}%`;
                 }
-
-                const elapsed = (Date.now() - startTime) / 1000;
-                const overall = (completed / totalSteps) * 100;
-                const remaining = elapsed * ((100 - overall) / Math.max(overall, 1));
-
-                statusText.textContent =
-                  `${PRESET_STATUS[presetSel.value]} · PDF page ${p}/${pdf.numPages} · ~${Math.ceil(remaining)}s left`;
-
-                const img = await renderPdfPageToImage(pdf, p);
-                const res = await worker.recognize(img);
-
-                output += res.data.text.trim() + "\n\n";
-                completed++;
-                progressBar.style.width = `${Math.round((completed / totalSteps) * 100)}%`;
               }
               continue;
             }
 
-            let input = downscaleToggle.checked ? await downscaleImage(file) : file;
+            try {
+              let input = downscaleToggle.checked ? await downscaleImage(file) : file;
 
-            // Lazy initialize single reusable worker instance to avoid expensive WASM re-creation per image
-            // Optimization: Reusing worker avoids ~1-2s WebWorker & WASM initialization overhead per page/image
-            if (!worker) {
-              worker = await Tesseract.createWorker(languageSel.value);
+              // Lazy initialize single reusable worker instance to avoid expensive WASM re-creation per image
+              // Optimization: Reusing worker avoids ~1-2s WebWorker & WASM initialization overhead per page/image
+              if (!worker) {
+                worker = await Tesseract.createWorker(languageSel.value);
+              }
+
+              const elapsed = (Date.now() - startTime) / 1000;
+              const overall = (completed / totalSteps) * 100;
+              const remaining = elapsed * ((100 - overall) / Math.max(overall, 1));
+              statusText.textContent =
+                `${PRESET_STATUS[presetSel.value]} · ~${Math.ceil(remaining)}s left`;
+
+              const res = await worker.recognize(input);
+              output += res.data.text.trim() + "\n\n";
+            } catch (err) {
+              console.error(`Error processing file ${file.name}:`, err);
+              output += `[Error processing ${file.name}: ${err.message || err}]\n\n`;
+            } finally {
+              completed++;
+              progressBar.style.width = `${Math.round((completed / totalSteps) * 100)}%`;
             }
-
-            const elapsed = (Date.now() - startTime) / 1000;
-            const overall = (completed / totalSteps) * 100;
-            const remaining = elapsed * ((100 - overall) / Math.max(overall, 1));
-            statusText.textContent =
-              `${PRESET_STATUS[presetSel.value]} · ~${Math.ceil(remaining)}s left`;
-
-            const res = await worker.recognize(input);
-
-            output += res.data.text.trim() + "\n\n";
-            completed++;
-            progressBar.style.width = `${Math.round((completed / totalSteps) * 100)}%`;
           }
         } finally {
           // Ensure worker is terminated to free memory and WebWorker resources
@@ -369,10 +438,39 @@
           statusText.textContent = "OCR cancelled.";
         } else {
           resultText.value = output || "No text detected.";
+          updateMetrics();
           statusText.textContent = "OCR completed successfully.";
-          copyBtn.disabled = !output;
-          downloadBtn.disabled = !output;
         }
+      };
+
+      /* ===================== TEXT METRICS & CLEANUP ===================== */
+      function updateMetrics() {
+        const val = resultText.value;
+        const trimmed = val.trim();
+        const words = trimmed ? trimmed.split(/\s+/).filter(Boolean).length : 0;
+        wordCount.textContent = words.toLocaleString();
+        charCount.textContent = val.length.toLocaleString();
+
+        const hasText = val.length > 0;
+        copyBtn.disabled = !hasText;
+        cleanBtn.disabled = !hasText;
+        downloadBtn.disabled = !hasText;
+      }
+
+      resultText.addEventListener("input", updateMetrics);
+
+      cleanBtn.onclick = () => {
+        if (!resultText.value) return;
+        const cleaned = resultText.value
+          .split("\n")
+          .map((line) => line.replace(/[ \t]+/g, " ").trim())
+          .join("\n")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim();
+
+        resultText.value = cleaned;
+        updateMetrics();
+        statusText.textContent = "Text cleaned (whitespace and empty lines removed).";
       };
 
       /* ===================== ACTIONS ===================== */
