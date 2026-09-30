@@ -210,23 +210,31 @@
 
       /* ===================== HELPERS ===================== */
       async function downscaleImage(file, maxWidth = 1600) {
-        const img = new Image();
-        img.src = URL.createObjectURL(file);
-        await img.decode();
+        const url = URL.createObjectURL(file);
+        try {
+          const img = new Image();
+          img.src = url;
+          await img.decode();
 
-        if (img.naturalWidth <= maxWidth) {
-          URL.revokeObjectURL(img.src);
-          return file;
+          if (img.naturalWidth <= maxWidth) {
+            return file;
+          }
+
+          const scale = maxWidth / img.naturalWidth;
+          const canvas = document.createElement("canvas");
+          canvas.width = maxWidth;
+          canvas.height = img.naturalHeight * scale;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+          const blob = await new Promise((res) => canvas.toBlob((b) => res(b), "image/jpeg", 0.9));
+          // Clean up canvas backing store references to avoid memory retaining
+          canvas.width = 0;
+          canvas.height = 0;
+          return blob;
+        } finally {
+          URL.revokeObjectURL(url);
         }
-
-        const scale = maxWidth / img.naturalWidth;
-        const canvas = document.createElement("canvas");
-        canvas.width = maxWidth;
-        canvas.height = img.naturalHeight * scale;
-        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-
-        URL.revokeObjectURL(img.src);
-        return new Promise((res) => canvas.toBlob((b) => res(b), "image/jpeg", 0.9));
       }
 
       async function extractTextFromPdf(pdf) {
@@ -245,8 +253,14 @@
         const canvas = document.createElement("canvas");
         canvas.width = viewport.width;
         canvas.height = viewport.height;
-        await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
-        return new Promise((res) => canvas.toBlob((b) => res(b), "image/png"));
+        const ctx = canvas.getContext("2d");
+        await page.render({ canvasContext: ctx, viewport }).promise;
+
+        const blob = await new Promise((res) => canvas.toBlob((b) => res(b), "image/png"));
+        // Clean up canvas dimensions to release canvas backing buffer memory immediately
+        canvas.width = 0;
+        canvas.height = 0;
+        return blob;
       }
 
       /* ===================== PREVIEW & DRAG-DROP ===================== */
@@ -330,11 +344,18 @@
         statusText.setAttribute("aria-busy", "true");
         statusText.textContent = "Preparing OCR…";
 
+        const selectedLang = languageSel.value;
         let totalSteps = 0;
+
         for (const f of files) {
           if (f.type === "application/pdf") {
-            const pdf = await pdfjsLib.getDocument(await f.arrayBuffer()).promise;
-            totalSteps += pdf.numPages;
+            try {
+              const pdf = await pdfjsLib.getDocument(await f.arrayBuffer()).promise;
+              totalSteps += pdf.numPages;
+            } catch (err) {
+              console.error(`Error reading PDF header for ${f.name}:`, err);
+              totalSteps += 1;
+            }
           } else {
             totalSteps++;
           }
@@ -345,19 +366,36 @@
         let output = "";
         let worker = null;
 
+        const getOrCreateWorker = async () => {
+          if (!worker) {
+            worker = await Tesseract.createWorker(selectedLang);
+          }
+          return worker;
+        };
+
         try {
           for (const file of files) {
             if (cancelRequested) break;
 
             if (file.type === "application/pdf") {
               statusText.textContent = "Analyzing PDF…";
-              const pdf = await pdfjsLib.getDocument(await file.arrayBuffer()).promise;
+              let pdf = null;
+              try {
+                pdf = await pdfjsLib.getDocument(await file.arrayBuffer()).promise;
+              } catch (err) {
+                console.error(`Error loading PDF ${file.name}:`, err);
+                output += `[Error loading PDF ${file.name}: ${err.message || err}]\n\n`;
+                completed++;
+                progressBar.style.width = `${Math.round((completed / Math.max(totalSteps, 1)) * 100)}%`;
+                continue;
+              }
+
               const text = await extractTextFromPdf(pdf);
 
               if (text.length > 50) {
                 output += text + "\n\n";
                 completed += pdf.numPages;
-                progressBar.style.width = `${(completed / totalSteps) * 100}%`;
+                progressBar.style.width = `${Math.round((completed / Math.max(totalSteps, 1)) * 100)}%`;
                 continue;
               }
 
@@ -365,28 +403,24 @@
                 if (cancelRequested) break;
 
                 try {
-                  // Lazy initialize single reusable worker instance to avoid expensive WASM re-creation per image
-                  // Optimization: Reusing worker avoids ~1-2s WebWorker & WASM initialization overhead per page/image
-                  if (!worker) {
-                    worker = await Tesseract.createWorker(languageSel.value);
-                  }
+                  const currentWorker = await getOrCreateWorker();
 
                   const elapsed = (Date.now() - startTime) / 1000;
-                  const overall = (completed / totalSteps) * 100;
+                  const overall = (completed / Math.max(totalSteps, 1)) * 100;
                   const remaining = elapsed * ((100 - overall) / Math.max(overall, 1));
 
                   statusText.textContent =
                     `${PRESET_STATUS[presetSel.value]} · PDF page ${p}/${pdf.numPages} · ~${Math.ceil(remaining)}s left`;
 
                   const img = await renderPdfPageToImage(pdf, p);
-                  const res = await worker.recognize(img);
+                  const res = await currentWorker.recognize(img);
                   output += res.data.text.trim() + "\n\n";
                 } catch (err) {
                   console.error(`Error processing PDF page ${p}:`, err);
                   output += `[Error processing PDF page ${p}: ${err.message || err}]\n\n`;
                 } finally {
                   completed++;
-                  progressBar.style.width = `${Math.round((completed / totalSteps) * 100)}%`;
+                  progressBar.style.width = `${Math.round((completed / Math.max(totalSteps, 1)) * 100)}%`;
                 }
               }
               continue;
@@ -394,33 +428,33 @@
 
             try {
               let input = downscaleToggle.checked ? await downscaleImage(file) : file;
-
-              // Lazy initialize single reusable worker instance to avoid expensive WASM re-creation per image
-              // Optimization: Reusing worker avoids ~1-2s WebWorker & WASM initialization overhead per page/image
-              if (!worker) {
-                worker = await Tesseract.createWorker(languageSel.value);
-              }
+              const currentWorker = await getOrCreateWorker();
 
               const elapsed = (Date.now() - startTime) / 1000;
-              const overall = (completed / totalSteps) * 100;
+              const overall = (completed / Math.max(totalSteps, 1)) * 100;
               const remaining = elapsed * ((100 - overall) / Math.max(overall, 1));
               statusText.textContent =
                 `${PRESET_STATUS[presetSel.value]} · ~${Math.ceil(remaining)}s left`;
 
-              const res = await worker.recognize(input);
+              const res = await currentWorker.recognize(input);
               output += res.data.text.trim() + "\n\n";
             } catch (err) {
               console.error(`Error processing file ${file.name}:`, err);
               output += `[Error processing ${file.name}: ${err.message || err}]\n\n`;
             } finally {
               completed++;
-              progressBar.style.width = `${Math.round((completed / totalSteps) * 100)}%`;
+              progressBar.style.width = `${Math.round((completed / Math.max(totalSteps, 1)) * 100)}%`;
             }
           }
         } finally {
           // Ensure worker is terminated to free memory and WebWorker resources
           if (worker) {
-            await worker.terminate();
+            try {
+              await worker.terminate();
+            } catch (e) {
+              console.error("Error terminating worker:", e);
+            }
+            worker = null;
           }
         }
 
@@ -491,10 +525,22 @@
 
       /* ===================== SHORTCUTS ===================== */
       document.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && !extractBtn.disabled) extractBtn.click();
-        if (e.key === "Escape") cancelBtn.click();
-        if ((e.ctrlKey || e.metaKey) && e.key === "c") {
-          navigator.clipboard.writeText(resultText.value);
+        const targetTag = e.target ? e.target.tagName : "";
+        const isEditing = targetTag === "INPUT" || targetTag === "TEXTAREA" || e.target.isContentEditable;
+
+        if (e.key === "Enter" && !extractBtn.disabled && !isEditing) {
+          extractBtn.click();
+        }
+        if (e.key === "Escape") {
+          cancelBtn.click();
+        }
+        // Bug fix: Do not override standard browser copy (Ctrl+C / Cmd+C) if the user is focused on an input/textarea or has selected text on screen
+        if ((e.ctrlKey || e.metaKey) && (e.key === "c" || e.key === "C")) {
+          const selection = window.getSelection ? window.getSelection().toString() : "";
+          if (!isEditing && !selection && resultText.value) {
+            navigator.clipboard.writeText(resultText.value);
+            statusText.textContent = "Copied!";
+          }
         }
       });
     </script>

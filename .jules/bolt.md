@@ -1,3 +1,7 @@
 ## 2025-03-08 - Tesseract.js Worker Reuse Optimization
 **Learning:** `Tesseract.recognize()` in Tesseract.js is deprecated and creates, initializes, loads WebAssembly core modules, and destroys a new WebWorker on every single call. For multi-image batches or multi-page PDFs, reusing a single `Tesseract.createWorker()` instance eliminates 1-2+ seconds of WebWorker setup and WASM re-initialization per image, speeding up batch processing by 2-3x.
 **Action:** Always create a single worker instance with `Tesseract.createWorker(lang)` before batch OCR loops, reuse it for all images/pages, and call `worker.terminate()` when batch processing finishes or is cancelled.
+
+## 2026-09-30 - HTML Canvas Memory Cleanup and Global Event Guarding
+**Learning:** HTML Canvas elements created in JavaScript during image downscaling and PDF page rendering retain large backing store bitmap arrays in memory until garbage collected. Setting `canvas.width = 0` and `canvas.height = 0` immediately releases canvas memory buffers. In addition, global keydown event listeners handling shortcuts (like Ctrl+C or Enter) must check if the target is an editable element (`input`, `textarea`, or `isContentEditable`) or if text is selected (`window.getSelection()`) to prevent breaking standard user interactions.
+**Action:** Always reset canvas dimensions to zero after converting to blob/data URL in image processing routines, and guard global hotkeys against editable input elements and active text selections.
